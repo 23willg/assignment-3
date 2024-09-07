@@ -61,8 +61,17 @@ void OpenCLMatrixMultiply(Matrix *input0, Matrix *input1, Matrix *result)
     CHECK_ERR(err, "clCreateKernel");
 
     //@@ Allocate GPU memory here
+    unsigned int size_0 = (*input0).shape[0] * (*input0).shape[1]; 
+    unsigned int size_1 = (*input1).shape[0] * (*input1).shape[1]; 
+    unsigned int size_res = (*result).shape[0] * (*result).shape[1]; 
+
+    device_a = clCreateBuffer(context, CL_MEM_WRITE_ONLY, size_0*sizeof(float), NULL, &err);
+    device_b = clCreateBuffer(context, CL_MEM_WRITE_ONLY, size_1*sizeof(float), NULL, &err);
+    device_c = clCreateBuffer(context, CL_MEM_WRITE_ONLY, size_res*sizeof(float), NULL, &err);
 
     //@@ Copy memory to the GPU here
+    clEnqueueWriteBuffer(queue, device_a, CL_TRUE, 0, size_0*sizeof(float), (*input0).data, 0, NULL, NULL);
+    clEnqueueWriteBuffer(queue, device_b, CL_TRUE, 0, size_1*sizeof(float), (*input1).data, 0, NULL, NULL);
 
     // Set the arguments to our compute kernel
     // __global const float *A, __global const float *B, __global float *C,
@@ -89,12 +98,26 @@ void OpenCLMatrixMultiply(Matrix *input0, Matrix *input1, Matrix *result)
     CHECK_ERR(err, "clSetKernelArg 8");
 
     // @@ define local and global work sizes
+    size_t global_item_size = size_res;
+    size_t local_item_size = 1;
 
     //@@ Launch the GPU Kernel here
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_item_size, &local_item_size, 0, NULL, NULL);
+    clFinish(queue);
 
     //@@ Copy the GPU memory back to the CPU here
+    clEnqueueReadBuffer(queue, device_c, CL_TRUE, 0, size_res*sizeof(float), (*result).data, 0, NULL, NULL);
 
     //@@ Free the GPU memory here
+    clReleaseMemObject(device_a);
+    clReleaseMemObject(device_b);
+    clReleaseMemObject(device_c);
+    clReleaseKernel(kernel);
+    clReleaseProgram(program);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+
+    free(kernel_source);
 }
 
 int main(int argc, char *argv[])
@@ -127,6 +150,8 @@ int main(int argc, char *argv[])
     int rows, cols;
     //@@ Update these values for the output rows and cols of the output
     //@@ Do not use the results from the answer matrix
+    rows = host_a.shape[0];
+    cols = host_b.shape[1];
 
     // Allocate the memory for the target.
     host_c.shape[0] = rows;
@@ -136,8 +161,8 @@ int main(int argc, char *argv[])
     // Call your matrix multiply.
     OpenCLMatrixMultiply(&host_a, &host_b, &host_c);
 
-    // // Call to print the matrix
-    // PrintMatrix(&host_c);
+    // Call to print the matrix
+    //PrintMatrix(&host_c);
 
     // Save the matrix
     SaveMatrix(input_file_d, &host_c);
